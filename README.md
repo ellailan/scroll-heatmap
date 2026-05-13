@@ -10,6 +10,7 @@ A Chrome extension that visualizes scroll depth data as a heatmap overlay on any
 - Dotted lines at each percentage mark (10%, 25%, 50%, 75%, 100%) with labels
 - Draggable legend panel - drag the header to reposition
 - Minimizable legend - click the "−" button to collapse
+- **Export as image** - Generate presentation-ready PNG with summary card for slide decks
 - Works on any website
 - Data persists across sessions
 
@@ -36,6 +37,26 @@ A Chrome extension that visualizes scroll depth data as a heatmap overlay on any
 - **Draggable**: Click and drag the header ("Scroll Depth") to move the panel anywhere on screen
 - **Minimizable**: Click the "−" button to collapse the panel; click "+" to expand
 - **Color Scale**: Shows the full range of colors from Red (few users) to Green (many users)
+- **Export Button**: Click "📤 Export" to generate a presentation-ready image
+
+## Export Feature
+
+The export feature generates a high-resolution PNG image perfect for slide decks and reports:
+
+1. Click the **"📤 Export"** button in the legend panel
+2. The extension captures the full page with the heatmap overlay
+3. A summary card is automatically added with:
+   - Page URL
+   - Total sessions count
+   - Bar chart showing engagement at each scroll depth
+   - Key insight (e.g., "88% reached the bottom - Strong engagement")
+4. The image downloads automatically as `scroll-analysis_[domain]_[date].png`
+
+**Use cases:**
+- Add to PowerPoint/Google Slides presentations
+- Include in client reports
+- Share with stakeholders
+- Document user engagement over time
 
 ## CSV Format
 
@@ -72,15 +93,13 @@ First session date,Event name,Event count
 - `popup.html/popup.js/popup.css` - Extension popup UI
 - `content.js` - Script injected into web pages
 - `heatmap.css` - Styles for the heatmap overlay
+- `lib/html2canvas.min.js` - Library for capturing page screenshots
 
 ## Exporting Data from Google Analytics
 
 1. Go to Google Analytics
 2. Navigate to Events report
-3. Filter for scroll events (scroll_to_10, scroll_to_25, etc.)
+3. Filter for scroll events (scroll_to_10, scroll_to_25, etc.) and for the website path you're interested in 
 4. Export as CSV (Time series format works best)
 5. Upload the CSV to this extension
 
-## License
-
-MIT

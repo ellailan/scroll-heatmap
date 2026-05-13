@@ -205,6 +205,17 @@ function showHeatMap(scrollData) {
   // Add legend content to legend
   legend.appendChild(legendContent);
   
+  // Export button
+  const exportBtn = document.createElement('button');
+  exportBtn.className = 'scroll-heatmap-export-btn';
+  exportBtn.textContent = '📤 Export';
+  exportBtn.title = 'Export as image for presentations';
+  exportBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    exportAsImage();
+  });
+  legendContent.appendChild(exportBtn);
+  
   // Close button
   const closeBtn = document.createElement('button');
   closeBtn.className = 'scroll-heatmap-close';
@@ -456,6 +467,432 @@ function hideHeatMap() {
   }
   isHeatMapVisible = false;
   currentScrollData = null;
+}
+
+// Helper function to draw rounded rectangle (polyfill for roundRect)
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+// Helper function to wrap text into lines
+function wrapText(ctx, text, maxWidth) {
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = '';
+  
+  words.forEach(word => {
+    const testLine = currentLine + word + ' ';
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && currentLine !== '') {
+      lines.push(currentLine.trim());
+      currentLine = word + ' ';
+    } else {
+      currentLine = testLine;
+    }
+  });
+  
+  if (currentLine.trim()) {
+    lines.push(currentLine.trim());
+  }
+  
+  return lines;
+}
+
+// Helper function to find optimal font size that fits text in given width
+function getOptimalFontSize(ctx, text, maxWidth, maxFontSize, minFontSize = 10) {
+  let fontSize = maxFontSize;
+  ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  
+  while (ctx.measureText(text).width > maxWidth && fontSize > minFontSize) {
+    fontSize--;
+    ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  }
+  
+  return fontSize;
+}
+
+// Export the heatmap as an image with summary card
+async function exportAsImage() {
+  if (!currentScrollData || !heatMapOverlay) {
+    console.error('No heatmap data to export');
+    alert('No heatmap data to export. Please load data first.');
+    return;
+  }
+  
+  // Check if html2canvas is available
+  if (typeof html2canvas === 'undefined') {
+    console.error('html2canvas library not loaded');
+    alert('Export library not loaded. Please refresh the page and try again.');
+    return;
+  }
+  
+  // Show loading indicator
+  const loadingIndicator = document.createElement('div');
+  loadingIndicator.className = 'scroll-heatmap-export-loading';
+  loadingIndicator.textContent = 'Generating export...';
+  document.body.appendChild(loadingIndicator);
+  
+  try {
+    // Temporarily hide legend and close button for clean capture
+    if (legendPanel) legendPanel.style.display = 'none';
+    if (closeButton) closeButton.style.display = 'none';
+    
+    // Get the actual content dimensions (exclude white space)
+    const contentWidth = Math.max(
+      document.body.scrollWidth,
+      document.documentElement.scrollWidth,
+      document.body.offsetWidth,
+      document.documentElement.offsetWidth
+    );
+    
+    const contentHeight = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.offsetHeight
+    );
+    
+    // Use html2canvas to capture the page
+    const pageCanvas = await html2canvas(document.body, {
+      logging: false,
+      useCORS: true,
+      allowTaint: true,
+      scrollY: 0,
+      scrollX: 0,
+      width: contentWidth,
+      height: contentHeight,
+      windowWidth: contentWidth,
+      windowHeight: contentHeight,
+      scale: 1 // Normal resolution for smaller file size
+    });
+    
+    // Restore legend and close button
+    if (legendPanel) legendPanel.style.display = '';
+    if (closeButton) closeButton.style.display = '';
+    
+    // Calculate dimensions
+    const pageWidth = pageCanvas.width;
+    const pageHeight = pageCanvas.height;
+    const maxUsers = currentScrollData.totalUsers || 1;
+    
+    // Analytics card should be at least 1/3 of total height
+    const cardPadding = Math.floor(pageHeight * 0.02); // 2% of page height
+    const cardHeight = Math.floor(pageHeight * 0.5); // Card is 50% of page height (1/3 of total)
+    const cardWidth = pageWidth - (cardPadding * 2);
+    const cardX = cardPadding;
+    const cardY = cardPadding;
+    const padding = Math.floor(cardHeight * 0.08); // 8% of card height
+    
+    // Font sizes relative to image height
+    const titleFontSize = Math.floor(cardHeight * 0.08); // 8% of card height
+    const subtitleFontSize = Math.floor(cardHeight * 0.05); // 5% of card height
+    const barLabelFontSize = Math.floor(cardHeight * 0.05); // 5% of card height
+    const barCountFontSize = Math.floor(cardHeight * 0.045); // 4.5% of card height
+    const insightFontSize = Math.floor(cardHeight * 0.045); // 4.5% of card height
+    const lineLabelFontSize = Math.floor(pageHeight * 0.04); // 4% of page height for line labels
+    
+    // Bar chart dimensions relative to card
+    const barHeight = Math.floor(cardHeight * 0.06);
+    const barSpacing = Math.floor(cardHeight * 0.08);
+    const barMaxWidth = Math.floor(cardWidth * 0.5);
+    
+    // Recalculate total height with actual card height
+    const actualTotalHeight = cardHeight + pageHeight + cardPadding;
+    const canvas = document.createElement('canvas');
+    canvas.width = pageWidth;
+    canvas.height = actualTotalHeight;
+    const ctx = canvas.getContext('2d');
+    
+    // Fill background
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(0, 0, pageWidth, actualTotalHeight);
+    
+    // Draw analytics card at top
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 4;
+    drawRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 16);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    
+    // Card border
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 2;
+    drawRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 16);
+    ctx.stroke();
+    
+    // Title - dynamically size font to fit
+    ctx.fillStyle = '#1a1a1a';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    
+    const titleText = '📊 Scroll Depth Analysis';
+    const maxTitleWidth = cardWidth - padding * 2;
+    const actualTitleFontSize = getOptimalFontSize(ctx, titleText, maxTitleWidth, titleFontSize, 12);
+    ctx.font = `bold ${actualTitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(titleText, cardX + padding, cardY + padding + actualTitleFontSize);
+    
+    // URL and sessions on same line
+    const headerLineY = cardY + padding + actualTitleFontSize + subtitleFontSize + 15;
+    
+    // Calculate available width for URL (leave room for sessions on right)
+    const sessionsText = `Sessions: ${currentScrollData.totalUsers}`;
+    ctx.font = `${subtitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    const sessionsWidth = ctx.measureText(sessionsText).width + 20;
+    
+    // URL on left - dynamically size to fit remaining space
+    ctx.fillStyle = '#666';
+    ctx.textAlign = 'left';
+    const url = window.location.hostname || 'Page';
+    const maxUrlWidth = cardWidth - padding * 2 - sessionsWidth;
+    const actualUrlFontSize = getOptimalFontSize(ctx, url, maxUrlWidth, subtitleFontSize, 10);
+    ctx.font = `${actualUrlFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(url, cardX + padding, headerLineY);
+    
+    // Sessions on right side
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#333';
+    ctx.font = `${subtitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(sessionsText, cardX + cardWidth - padding, headerLineY);
+    
+    // Divider line
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 2;
+    const dividerY = cardY + padding + titleFontSize + subtitleFontSize + 30;
+    ctx.beginPath();
+    ctx.moveTo(cardX + padding, dividerY);
+    ctx.lineTo(cardX + cardWidth - padding, dividerY);
+    ctx.stroke();
+    
+    // Bar chart - centered and properly sized
+    const barStartY = dividerY + 30;
+    const legendPoints = [10, 25, 50, 75, 100];
+    
+    // Calculate bar width to fit within card with proper spacing
+    const labelWidth = barLabelFontSize * 4; // Space for "100%"
+    const countWidth = barCountFontSize * 8; // Space for "999 (100%)"
+    const barGap = 20; // Gap between elements
+    const availableBarWidth = cardWidth - padding * 2 - labelWidth - countWidth - barGap * 2;
+    const actualBarMaxWidth = Math.max(100, Math.min(barMaxWidth, availableBarWidth));
+    
+    // Center the entire bar chart
+    const totalChartWidth = labelWidth + actualBarMaxWidth + countWidth + barGap * 2;
+    const chartStartX = cardX + (cardWidth - totalChartWidth) / 2;
+    
+    legendPoints.forEach((percent, index) => {
+      const count = currentScrollData.scrollDepths[String(percent)] || 0;
+      const ratio = count / maxUsers;
+      const barWidth = Math.max(barHeight, ratio * actualBarMaxWidth);
+      const y = barStartY + index * barSpacing;
+      
+      // Label (centered vertically)
+      ctx.fillStyle = '#333';
+      ctx.font = `bold ${barLabelFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${percent}%`, chartStartX + labelWidth - 10, y + barHeight / 2);
+      
+      // Bar background
+      ctx.fillStyle = '#f0f0f0';
+      drawRoundedRect(ctx, chartStartX + labelWidth + barGap, y, actualBarMaxWidth, barHeight, 6);
+      ctx.fill();
+      
+      // Bar fill with heat color
+      ctx.fillStyle = getHeatColor(ratio, 1.0);
+      drawRoundedRect(ctx, chartStartX + labelWidth + barGap, y, barWidth, barHeight, 6);
+      ctx.fill();
+      
+      // Count and percentage (centered vertically)
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#555';
+      ctx.font = `${barCountFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      const pctOfTotal = Math.round((count / maxUsers) * 100);
+      ctx.fillText(`${count} (${pctOfTotal}%)`, chartStartX + labelWidth + actualBarMaxWidth + barGap * 2, y + barHeight / 2);
+    });
+    
+    // Reset text baseline
+    ctx.textBaseline = 'alphabetic';
+    
+    // Key insight - centered and word wrapped
+    ctx.textAlign = 'left';
+    const insightY = barStartY + 5 * barSpacing + barHeight + 10;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `bold ${insightFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    
+    // Generate dynamic insight based on data patterns
+    const insight = generateInsight(currentScrollData, maxUsers);
+    
+    // Word wrap the insight text to fit within card
+    ctx.font = `${insightFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillStyle = '#444';
+    
+    const maxInsightWidth = cardWidth - padding * 2;
+    const insightLines = wrapText(ctx, '💡 ' + insight, maxInsightWidth);
+    let lineY = insightY;
+    
+    insightLines.forEach(line => {
+      ctx.fillText(line, cardX + padding, lineY);
+      lineY += insightFontSize + 6;
+    });
+    
+    // Draw the page screenshot below the card
+    ctx.drawImage(pageCanvas, 0, cardHeight + cardPadding);
+    
+    // Now draw heatmap overlay on the page portion
+    const pageStartY = cardHeight + cardPadding;
+    
+    // Draw the heatmap gradient overlay
+    const scrollPoints = [0, 10, 25, 50, 75, 90, 100];
+    const gradient = ctx.createLinearGradient(0, pageStartY, 0, pageStartY + pageHeight);
+    
+    scrollPoints.forEach(scrollPercent => {
+      let users;
+      if (scrollPercent === 0) {
+        users = maxUsers;
+      } else {
+        users = currentScrollData.scrollDepths[String(scrollPercent)] || 0;
+      }
+      
+      const ratio = users / maxUsers;
+      const color = getHeatColor(ratio, 0.35);
+      gradient.addColorStop(scrollPercent / 100, color);
+    });
+    
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, pageStartY, pageWidth, pageHeight);
+    
+    // Draw percentage marker lines with labels - using relative font size
+    const markerPoints = [10, 25, 50, 75, 100];
+    const labelHeight = Math.floor(pageHeight * 0.05); // 5% of page height
+    const labelPadding = Math.floor(pageHeight * 0.02); // 2% of page height
+    
+    markerPoints.forEach(percent => {
+      const y = pageStartY + (percent / 100) * pageHeight;
+      const users = currentScrollData.scrollDepths[String(percent)] || 0;
+      const ratio = users / maxUsers;
+      const color = getHeatColor(ratio, 1.0);
+      
+      // Draw dashed line - thickness relative to page height
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.floor(pageHeight * 0.005); // 0.5% of page height
+      ctx.setLineDash([Math.floor(pageHeight * 0.015), Math.floor(pageHeight * 0.008)]);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(pageWidth, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      
+      // Draw label on right side - using relative font size
+      const labelText = `${percent}% - ${users} users`;
+      ctx.font = `bold ${lineLabelFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      const textMetrics = ctx.measureText(labelText);
+      const labelWidth = textMetrics.width + labelPadding * 2;
+      
+      // Ensure label stays within page bounds
+      let labelX = pageWidth - labelWidth - labelPadding;
+      let labelY = y - labelHeight / 2;
+      
+      // Keep label from going off top
+      if (labelY < pageStartY) {
+        labelY = pageStartY + 5;
+      }
+      // Keep label from going off bottom
+      if (labelY + labelHeight > pageStartY + pageHeight) {
+        labelY = pageStartY + pageHeight - labelHeight - 5;
+      }
+      
+      // Label background with shadow
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      ctx.fillStyle = color;
+      drawRoundedRect(ctx, labelX, labelY, labelWidth, labelHeight, Math.floor(pageHeight * 0.01));
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      
+      // Label text
+      ctx.fillStyle = (ratio >= 0.25 && ratio <= 0.75) ? '#1a1a1a' : '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(labelText, labelX + labelWidth / 2, labelY + labelHeight / 2);
+    });
+    
+    // Download the image
+    const link = document.createElement('a');
+    const date = new Date().toISOString().split('T')[0];
+    link.download = `scroll-analysis_${url}_${date}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    
+  } catch (error) {
+    console.error('Export failed:', error);
+    alert('Failed to export image. Please try again.');
+  } finally {
+    // Remove loading indicator
+    if (loadingIndicator.parentNode) {
+      loadingIndicator.parentNode.removeChild(loadingIndicator);
+    }
+  }
+}
+
+// Generate dynamic insight based on scroll data
+function generateInsight(data, maxUsers) {
+  const depths = data.scrollDepths || {};
+  
+  // Get all available percentage points
+  const points = [10, 25, 50, 75, 90, 100].map(p => ({
+    percent: p,
+    count: depths[String(p)] || 0
+  }));
+  
+  // Find the biggest drop-off
+  let biggestDrop = { from: 0, to: 0, dropPercent: 0 };
+  for (let i = 1; i < points.length; i++) {
+    const drop = points[i-1].count - points[i].count;
+    const dropPercent = points[i-1].count > 0 ? (drop / points[i-1].count) * 100 : 0;
+    if (drop > 0 && dropPercent > biggestDrop.dropPercent) {
+      biggestDrop = {
+        from: points[i-1].percent,
+        to: points[i].percent,
+        dropPercent: dropPercent,
+        dropCount: drop
+      };
+    }
+  }
+  
+  // Calculate engagement level
+  const bottomReach = depths['100'] || 0;
+  const bottomPercent = Math.round((bottomReach / maxUsers) * 100);
+  
+  // Build insight message
+  let insight = '';
+  
+  if (biggestDrop.dropPercent > 30) {
+    insight = `Major drop-off: ${Math.round(biggestDrop.dropPercent)}% of users left between ${biggestDrop.from}% and ${biggestDrop.to}% scroll. Consider moving key content higher.`;
+  } else if (bottomPercent >= 75) {
+    insight = `Strong engagement: ${bottomPercent}% of users reached the bottom. Content is performing well.`;
+  } else if (bottomPercent >= 50) {
+    insight = `Good engagement: ${bottomPercent}% scrolled to the end. Consider testing content layout below 50%.`;
+  } else if (bottomPercent >= 25) {
+    insight = `Moderate engagement: Only ${bottomPercent}% reached the bottom. Key content should be above 50% scroll.`;
+  } else {
+    insight = `Low engagement: Only ${bottomPercent}% scrolled to the bottom. Most users don't scroll past 25%.`;
+  }
+  
+  return insight;
 }
 
 // Check initial state on load

@@ -17,7 +17,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["lib/html2canvas.min.js", "content.js"],
       "css": ["heatmap.css"],
       "run_at": "document_idle",
       "all_frames": false
