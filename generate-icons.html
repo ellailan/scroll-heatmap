@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Generate Extension Icons</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #1a1a2e;
+      color: white;
+    }
+    .icon-container {
+      display: flex;
+      gap: 20px;
+      margin: 20px 0;
+    }
+    .icon-box {
+      text-align: center;
+    }
+    canvas {
+      border: 1px solid #333;
+      border-radius: 8px;
+    }
+    button {
+      background: #4ade80;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #22c55e;
+    }
+    .instructions {
+      background: rgba(255,255,255,0.1);
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔥 Scroll Heat Map - Icon Generator</h1>
+  
+  <div class="instructions">
+    <h3>Instructions:</h3>
+    <ol>
+      <li>Click each "Download" button to save the icon</li>
+      <li>Move the downloaded files to the <code>images/</code> folder</li>
+      <li>Reload the extension in Chrome</li>
+    </ol>
+  </div>
+  
+  <div class="icon-container">
+    <div class="icon-box">
+      <h3>16x16</h3>
+      <canvas id="icon16" width="16" height="16"></canvas>
+      <br><button onclick="download('icon16', 16)">Download</button>
+    </div>
+    <div class="icon-box">
+      <h3>48x48</h3>
+      <canvas id="icon48" width="48" height="48"></canvas>
+      <br><button onclick="download('icon48', 48)">Download</button>
+    </div>
+    <div class="icon-box">
+      <h3>128x128</h3>
+      <canvas id="icon128" width="128" height="128"></canvas>
+      <br><button onclick="download('icon128', 128)">Download</button>
+    </div>
+  </div>
+  
+  <script>
+    function drawIcon(canvasId, size) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // Background gradient (fire colors)
+      const gradient = ctx.createLinearGradient(0, 0, 0, size);
+      gradient.addColorStop(0, '#ef4444');    // Red
+      gradient.addColorStop(0.5, '#f97316');  // Orange
+      gradient.addColorStop(1, '#eab308');    // Yellow
+      
+      // Draw rounded rectangle background
+      const radius = size * 0.15;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(size - radius, 0);
+      ctx.quadraticCurveTo(size, 0, size, radius);
+      ctx.lineTo(size, size - radius);
+      ctx.quadraticCurveTo(size, size, size - radius, size);
+      ctx.lineTo(radius, size);
+      ctx.quadraticCurveTo(0, size, 0, size - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Draw flame icon
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      
+      // Simple flame shape
+      const centerX = size / 2;
+      const flameWidth = size * 0.35;
+      const flameHeight = size * 0.6;
+      
+      // Outer flame
+      ctx.beginPath();
+      ctx.moveTo(centerX, size * 0.15);
+      ctx.bezierCurveTo(
+        centerX + flameWidth, size * 0.3,
+        centerX + flameWidth * 0.8, size * 0.6,
+        centerX, size * 0.85
+      );
+      ctx.bezierCurveTo(
+        centerX - flameWidth * 0.8, size * 0.6,
+        centerX - flameWidth, size * 0.3,
+        centerX, size * 0.15
+      );
+      ctx.fill();
+      
+      // Inner flame (cutout effect)
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(centerX, size * 0.35);
+      ctx.bezierCurveTo(
+        centerX + flameWidth * 0.4, size * 0.45,
+        centerX + flameWidth * 0.3, size * 0.65,
+        centerX, size * 0.75
+      );
+      ctx.bezierCurveTo(
+        centerX - flameWidth * 0.3, size * 0.65,
+        centerX - flameWidth * 0.4, size * 0.45,
+        centerX, size * 0.35
+      );
+      ctx.fill();
+    }
+    
+    function download(canvasId, size) {
+      const canvas = document.getElementById(canvasId);
+      const link = document.createElement('a');
+      link.download = `icon${size}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+    
+    // Draw all icons on load
+    drawIcon('icon16', 16);
+    drawIcon('icon48', 48);
+    drawIcon('icon128', 128);
+  </script>
+</body>
+</html>
