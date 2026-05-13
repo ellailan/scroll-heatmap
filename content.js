@@ -252,6 +252,11 @@ function showHeatMap(scrollData) {
     label.className = 'scroll-heatmap-marker-label';
     label.style.backgroundColor = color;
     
+    // For 100% marker, add class to position it above the line so it doesn't get cut off
+    if (percent === 100) {
+      label.classList.add('at-bottom');
+    }
+    
     // Use dark text for yellow/orange colors (ratio between 0.25 and 0.75)
     if (ratio >= 0.25 && ratio <= 0.75) {
       label.classList.add('dark-text');
@@ -543,9 +548,12 @@ async function exportAsImage() {
   document.body.appendChild(loadingIndicator);
   
   try {
-    // Temporarily hide legend and close button for clean capture
+    // Temporarily hide legend, close button, and marker labels for clean capture
     if (legendPanel) legendPanel.style.display = 'none';
     if (closeButton) closeButton.style.display = 'none';
+    // Hide all marker labels (they appear as "junk" in the capture)
+    const markerLabels = document.querySelectorAll('.scroll-heatmap-marker-label');
+    markerLabels.forEach(label => label.style.display = 'none');
     
     // Get the actual content dimensions (exclude white space)
     const contentWidth = Math.max(
@@ -555,11 +563,15 @@ async function exportAsImage() {
       document.documentElement.offsetWidth
     );
     
-    const contentHeight = Math.max(
-      document.body.scrollHeight,
-      document.documentElement.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.offsetHeight
+    // Use the visible document height to avoid capturing empty space at bottom
+    const contentHeight = Math.min(
+      Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.offsetHeight
+      ),
+      window.innerHeight * 3 // Limit to 3x viewport height to avoid huge captures
     );
     
     // Use html2canvas to capture the page
@@ -573,49 +585,49 @@ async function exportAsImage() {
       height: contentHeight,
       windowWidth: contentWidth,
       windowHeight: contentHeight,
-      scale: 1 // Normal resolution for smaller file size
+      scale: 1, // Normal resolution for smaller file size
+      y: 0 // Start from top
     });
     
-    // Restore legend and close button
+    // Restore legend, close button, and marker labels
     if (legendPanel) legendPanel.style.display = '';
     if (closeButton) closeButton.style.display = '';
+    markerLabels.forEach(label => label.style.display = '');
     
-    // Calculate dimensions
+    // Calculate dimensions - side by side layout
     const pageWidth = pageCanvas.width;
     const pageHeight = pageCanvas.height;
     const maxUsers = currentScrollData.totalUsers || 1;
     
-    // Analytics card should be at least 1/3 of total height
-    const cardPadding = Math.floor(pageHeight * 0.02); // 2% of page height
-    const cardHeight = Math.floor(pageHeight * 0.5); // Card is 50% of page height (1/3 of total)
-    const cardWidth = pageWidth - (cardPadding * 2);
-    const cardX = cardPadding;
-    const cardY = cardPadding;
-    const padding = Math.floor(cardHeight * 0.08); // 8% of card height
+    // Analytics card on the left, page on the right - card takes 75% of width for better readability
+    const cardWidth = Math.floor(pageWidth * 0.75); // Card takes 75% of width
+    const cardHeight = pageHeight;
+    const cardX = 0;
+    const cardY = 0;
+    const padding = Math.floor(cardWidth * 0.06); // 6% of card width for better spacing
     
-    // Font sizes relative to image height
-    const titleFontSize = Math.floor(cardHeight * 0.08); // 8% of card height
-    const subtitleFontSize = Math.floor(cardHeight * 0.05); // 5% of card height
-    const barLabelFontSize = Math.floor(cardHeight * 0.05); // 5% of card height
-    const barCountFontSize = Math.floor(cardHeight * 0.045); // 4.5% of card height
-    const insightFontSize = Math.floor(cardHeight * 0.045); // 4.5% of card height
-    const lineLabelFontSize = Math.floor(pageHeight * 0.04); // 4% of page height for line labels
+    // Font sizes - will be dynamically adjusted
+    const maxTitleFontSize = Math.floor(cardWidth * 0.06);
+    const maxSubtitleFontSize = Math.floor(cardWidth * 0.04);
+    const maxBarLabelFontSize = Math.floor(cardWidth * 0.04);
+    const maxBarCountFontSize = Math.floor(cardWidth * 0.035);
+    const maxInsightFontSize = Math.floor(cardWidth * 0.035);
+    const lineLabelFontSize = Math.floor(pageHeight * 0.035);
     
     // Bar chart dimensions relative to card
-    const barHeight = Math.floor(cardHeight * 0.06);
-    const barSpacing = Math.floor(cardHeight * 0.08);
-    const barMaxWidth = Math.floor(cardWidth * 0.5);
+    const barHeight = Math.floor(cardHeight * 0.04);
+    const barSpacing = Math.floor(cardHeight * 0.07);
     
-    // Recalculate total height with actual card height
-    const actualTotalHeight = cardHeight + pageHeight + cardPadding;
+    // Total canvas: card on left + page on right
+    const totalWidth = cardWidth + pageWidth;
     const canvas = document.createElement('canvas');
-    canvas.width = pageWidth;
-    canvas.height = actualTotalHeight;
+    canvas.width = totalWidth;
+    canvas.height = pageHeight;
     const ctx = canvas.getContext('2d');
     
     // Fill background
     ctx.fillStyle = '#f5f5f5';
-    ctx.fillRect(0, 0, pageWidth, actualTotalHeight);
+    ctx.fillRect(0, 0, totalWidth, pageHeight);
     
     // Draw analytics card at top
     ctx.fillStyle = '#ffffff';
@@ -633,59 +645,77 @@ async function exportAsImage() {
     drawRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 16);
     ctx.stroke();
     
-    // Title - dynamically size font to fit
+    // Title - centered
     ctx.fillStyle = '#1a1a1a';
-    ctx.textAlign = 'left';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     
     const titleText = '📊 Scroll Depth Analysis';
     const maxTitleWidth = cardWidth - padding * 2;
-    const actualTitleFontSize = getOptimalFontSize(ctx, titleText, maxTitleWidth, titleFontSize, 12);
+    const actualTitleFontSize = getOptimalFontSize(ctx, titleText, maxTitleWidth, maxTitleFontSize, 12);
     ctx.font = `bold ${actualTitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    ctx.fillText(titleText, cardX + padding, cardY + padding + actualTitleFontSize);
     
-    // URL and sessions on same line
-    const headerLineY = cardY + padding + actualTitleFontSize + subtitleFontSize + 15;
+    // Calculate actual font sizes for bars - make insight much bigger for readability
+    const actualBarLabelFontSize = Math.min(maxBarLabelFontSize, actualTitleFontSize * 0.7);
+    const actualBarCountFontSize = Math.min(maxBarCountFontSize, actualTitleFontSize * 0.65);
+    const actualInsightFontSize = actualTitleFontSize * 0.5; // Much bigger - half the title size
     
-    // Calculate available width for URL (leave room for sessions on right)
+    // Calculate total content height to center it vertically
+    const titleSectionHeight = actualTitleFontSize + 15;
+    const actualSubtitleFontSize = Math.min(maxSubtitleFontSize, actualTitleFontSize * 0.7);
+    const subtitleSectionHeight = actualSubtitleFontSize + 30;
+    const dividerAndGapHeight = 30;
+    const barChartHeight = 5 * barSpacing;
+    const insightSectionHeight = actualInsightFontSize + 60;
+    const totalContentHeight = titleSectionHeight + subtitleSectionHeight + dividerAndGapHeight + barChartHeight + insightSectionHeight;
+    
+    // Center the content vertically in the card
+    const contentStartY = cardY + (cardHeight - totalContentHeight) / 2;
+    
+    // Draw title at centered position
+    ctx.fillText(titleText, cardX + cardWidth / 2, contentStartY + actualTitleFontSize);
+    
+    // URL and sessions on same line - centered
+    const headerLineY = contentStartY + actualTitleFontSize + actualSubtitleFontSize + 15;
+    
+    // Center URL and sessions
+    const url = window.location.hostname || 'Page';
     const sessionsText = `Sessions: ${currentScrollData.totalUsers}`;
-    ctx.font = `${subtitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    const sessionsWidth = ctx.measureText(sessionsText).width + 20;
+    ctx.font = `${actualSubtitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    const urlWidth = ctx.measureText(url).width;
+    const sessionsWidth = ctx.measureText(sessionsText).width;
+    const totalHeaderWidth = urlWidth + 40 + sessionsWidth;
+    const headerStartX = cardX + (cardWidth - totalHeaderWidth) / 2;
     
-    // URL on left - dynamically size to fit remaining space
+    // URL on left
     ctx.fillStyle = '#666';
     ctx.textAlign = 'left';
-    const url = window.location.hostname || 'Page';
-    const maxUrlWidth = cardWidth - padding * 2 - sessionsWidth;
-    const actualUrlFontSize = getOptimalFontSize(ctx, url, maxUrlWidth, subtitleFontSize, 10);
-    ctx.font = `${actualUrlFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    ctx.fillText(url, cardX + padding, headerLineY);
+    ctx.fillText(url, headerStartX, headerLineY);
     
     // Sessions on right side
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#333';
-    ctx.font = `${subtitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    ctx.fillText(sessionsText, cardX + cardWidth - padding, headerLineY);
+    ctx.fillText(sessionsText, headerStartX + urlWidth + 40, headerLineY);
     
     // Divider line
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 2;
-    const dividerY = cardY + padding + titleFontSize + subtitleFontSize + 30;
+    const dividerY = headerLineY + 15;
     ctx.beginPath();
     ctx.moveTo(cardX + padding, dividerY);
     ctx.lineTo(cardX + cardWidth - padding, dividerY);
     ctx.stroke();
     
-    // Bar chart - centered and properly sized
+    // Bar chart - centered and properly sized with dynamic font sizes
     const barStartY = dividerY + 30;
     const legendPoints = [10, 25, 50, 75, 100];
     
     // Calculate bar width to fit within card with proper spacing
-    const labelWidth = barLabelFontSize * 4; // Space for "100%"
-    const countWidth = barCountFontSize * 8; // Space for "999 (100%)"
-    const barGap = 20; // Gap between elements
+    const labelWidth = actualBarLabelFontSize * 4; // Space for "100%"
+    const countWidth = actualBarCountFontSize * 8; // Space for "999 (100%)"
+    const barGap = 15; // Gap between elements
     const availableBarWidth = cardWidth - padding * 2 - labelWidth - countWidth - barGap * 2;
-    const actualBarMaxWidth = Math.max(100, Math.min(barMaxWidth, availableBarWidth));
+    const actualBarMaxWidth = Math.max(50, availableBarWidth);
     
     // Center the entire bar chart
     const totalChartWidth = labelWidth + actualBarMaxWidth + countWidth + barGap * 2;
@@ -699,7 +729,7 @@ async function exportAsImage() {
       
       // Label (centered vertically)
       ctx.fillStyle = '#333';
-      ctx.font = `bold ${barLabelFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = `bold ${actualBarLabelFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${percent}%`, chartStartX + labelWidth - 10, y + barHeight / 2);
@@ -717,7 +747,7 @@ async function exportAsImage() {
       // Count and percentage (centered vertically)
       ctx.textAlign = 'left';
       ctx.fillStyle = '#555';
-      ctx.font = `${barCountFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = `${actualBarCountFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
       const pctOfTotal = Math.round((count / maxUsers) * 100);
       ctx.fillText(`${count} (${pctOfTotal}%)`, chartStartX + labelWidth + actualBarMaxWidth + barGap * 2, y + barHeight / 2);
     });
@@ -725,17 +755,15 @@ async function exportAsImage() {
     // Reset text baseline
     ctx.textBaseline = 'alphabetic';
     
-    // Key insight - centered and word wrapped
-    ctx.textAlign = 'left';
-    const insightY = barStartY + 5 * barSpacing + barHeight + 10;
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = `bold ${insightFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    // Key insight - centered
+    ctx.textAlign = 'center';
+    const insightY = barStartY + 5 * barSpacing + barHeight + 20;
     
     // Generate dynamic insight based on data patterns
     const insight = generateInsight(currentScrollData, maxUsers);
     
     // Word wrap the insight text to fit within card
-    ctx.font = `${insightFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.font = `${actualInsightFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
     ctx.fillStyle = '#444';
     
     const maxInsightWidth = cardWidth - padding * 2;
@@ -743,19 +771,17 @@ async function exportAsImage() {
     let lineY = insightY;
     
     insightLines.forEach(line => {
-      ctx.fillText(line, cardX + padding, lineY);
-      lineY += insightFontSize + 6;
+      ctx.fillText(line, cardX + cardWidth / 2, lineY);
+      lineY += actualInsightFontSize + 8;
     });
     
-    // Draw the page screenshot below the card
-    ctx.drawImage(pageCanvas, 0, cardHeight + cardPadding);
+    // Draw the page screenshot on the right side
+    const pageStartX = cardWidth;
+    ctx.drawImage(pageCanvas, pageStartX, 0);
     
-    // Now draw heatmap overlay on the page portion
-    const pageStartY = cardHeight + cardPadding;
-    
-    // Draw the heatmap gradient overlay
+    // Draw the heatmap gradient overlay ONLY on the page portion (right side)
     const scrollPoints = [0, 10, 25, 50, 75, 90, 100];
-    const gradient = ctx.createLinearGradient(0, pageStartY, 0, pageStartY + pageHeight);
+    const gradient = ctx.createLinearGradient(pageStartX, 0, pageStartX, pageHeight);
     
     scrollPoints.forEach(scrollPercent => {
       let users;
@@ -771,15 +797,15 @@ async function exportAsImage() {
     });
     
     ctx.fillStyle = gradient;
-    ctx.fillRect(0, pageStartY, pageWidth, pageHeight);
+    ctx.fillRect(pageStartX, 0, pageWidth, pageHeight);
     
-    // Draw percentage marker lines with labels - using relative font size
+    // Draw percentage marker lines with labels on the page portion
     const markerPoints = [10, 25, 50, 75, 100];
     const labelHeight = Math.floor(pageHeight * 0.05); // 5% of page height
     const labelPadding = Math.floor(pageHeight * 0.02); // 2% of page height
     
     markerPoints.forEach(percent => {
-      const y = pageStartY + (percent / 100) * pageHeight;
+      const y = (percent / 100) * pageHeight;
       const users = currentScrollData.scrollDepths[String(percent)] || 0;
       const ratio = users / maxUsers;
       const color = getHeatColor(ratio, 1.0);
@@ -789,8 +815,8 @@ async function exportAsImage() {
       ctx.lineWidth = Math.floor(pageHeight * 0.005); // 0.5% of page height
       ctx.setLineDash([Math.floor(pageHeight * 0.015), Math.floor(pageHeight * 0.008)]);
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(pageWidth, y);
+      ctx.moveTo(pageStartX, y);
+      ctx.lineTo(pageStartX + pageWidth, y);
       ctx.stroke();
       ctx.setLineDash([]);
       
@@ -801,16 +827,16 @@ async function exportAsImage() {
       const labelWidth = textMetrics.width + labelPadding * 2;
       
       // Ensure label stays within page bounds
-      let labelX = pageWidth - labelWidth - labelPadding;
+      let labelX = pageStartX + pageWidth - labelWidth - labelPadding;
       let labelY = y - labelHeight / 2;
       
       // Keep label from going off top
-      if (labelY < pageStartY) {
-        labelY = pageStartY + 5;
+      if (labelY < 0) {
+        labelY = 5;
       }
       // Keep label from going off bottom
-      if (labelY + labelHeight > pageStartY + pageHeight) {
-        labelY = pageStartY + pageHeight - labelHeight - 5;
+      if (labelY + labelHeight > pageHeight) {
+        labelY = pageHeight - labelHeight - 5;
       }
       
       // Label background with shadow

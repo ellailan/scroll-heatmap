@@ -274,6 +274,13 @@
   margin-top: 2px !important;
 }
 
+/* 100% marker label - position above the line to avoid being cut off */
+.scroll-heatmap-marker-label.at-bottom {
+  top: auto !important;
+  bottom: 10px !important;
+  transform: none !important;
+}
+
 /* Close button */
 .scroll-heatmap-close {
   position: fixed !important;
