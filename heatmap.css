@@ -226,18 +226,24 @@
   right: 20px !important;
   top: -18px !important;
   transform: translateY(-50%) !important;
-  padding: 8px 16px !important;
+  padding: 10px 16px !important;
   border-radius: 8px !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif !important;
   font-size: 14px !important;
   font-weight: 600 !important;
   display: flex !important;
-  align-items: center !important;
-  gap: 12px !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  gap: 4px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
   pointer-events: auto !important;
-  white-space: nowrap !important;
   border: 2px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.scroll-heatmap-marker-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
 }
 
 .scroll-heatmap-marker-label.light-text {
@@ -258,6 +264,14 @@
 .scroll-heatmap-marker-count {
   opacity: 0.9 !important;
   font-size: 13px !important;
+}
+
+.scroll-heatmap-marker-explanation {
+  display: block !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  opacity: 0.85 !important;
+  margin-top: 2px !important;
 }
 
 /* Close button */

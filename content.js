@@ -248,10 +248,14 @@ function showHeatMap(scrollData) {
       label.classList.add('light-text');
     }
     
+    // Create row for percent and count
+    const row = document.createElement('div');
+    row.className = 'scroll-heatmap-marker-row';
+    
     const percentText = document.createElement('span');
     percentText.className = 'scroll-heatmap-marker-percent';
     percentText.textContent = `${percent}%`;
-    label.appendChild(percentText);
+    row.appendChild(percentText);
     
     const countText = document.createElement('span');
     countText.className = 'scroll-heatmap-marker-count';
@@ -260,7 +264,30 @@ function showHeatMap(scrollData) {
       const percentage = Math.round((count / maxUsers) * 100);
       countText.textContent = `${count} (${percentage}%)`;
     }
-    label.appendChild(countText);
+    row.appendChild(countText);
+    label.appendChild(row);
+    
+    // Add audience loss explanation with raw count and comparative context
+    const explanationText = document.createElement('span');
+    explanationText.className = 'scroll-heatmap-marker-explanation';
+    if (scrollData && scrollData.scrollDepths) {
+      const count = scrollData.scrollDepths[String(percent)] || 0;
+      const percentage = Math.round((count / maxUsers) * 100);
+      
+      // Build message: raw count + comparative context
+      let message = '';
+      if (percentage >= 75) {
+        message = `${count} users reached here - Strong engagement`;
+      } else if (percentage >= 50) {
+        message = `${count} users made it this far - Good engagement`;
+      } else if (percentage >= 25) {
+        message = `${count} users reached here - Low engagement`;
+      } else {
+        message = `${count} users made it this far - Few viewers reached this point`;
+      }
+      explanationText.textContent = message;
+    }
+    label.appendChild(explanationText);
     
     marker.appendChild(label);
     gradientOverlay.appendChild(marker);
