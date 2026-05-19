@@ -19,6 +19,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   
   if (request.action === 'updateHeatMap') {
+    // Always update currentScrollData so export has latest data (including dateRange)
+    currentScrollData = request.data;
     if (isHeatMapVisible) {
       showHeatMap(request.data);
     }
@@ -516,11 +518,11 @@ function wrapText(ctx, text, maxWidth) {
 // Helper function to find optimal font size that fits text in given width
 function getOptimalFontSize(ctx, text, maxWidth, maxFontSize, minFontSize = 10) {
   let fontSize = maxFontSize;
-  ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.font = `bold ${fontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
   
   while (ctx.measureText(text).width > maxWidth && fontSize > minFontSize) {
     fontSize--;
-    ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.font = `bold ${fontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
   }
   
   return fontSize;
@@ -548,12 +550,10 @@ async function exportAsImage() {
   document.body.appendChild(loadingIndicator);
   
   try {
-    // Temporarily hide legend, close button, and marker labels for clean capture
+    // Temporarily hide legend, close button, and gradient overlay for clean capture
     if (legendPanel) legendPanel.style.display = 'none';
     if (closeButton) closeButton.style.display = 'none';
-    // Hide all marker labels (they appear as "junk" in the capture)
-    const markerLabels = document.querySelectorAll('.scroll-heatmap-marker-label');
-    markerLabels.forEach(label => label.style.display = 'none');
+    if (gradientOverlay) gradientOverlay.style.display = 'none';
     
     // Get the actual content dimensions (exclude white space)
     const contentWidth = Math.max(
@@ -589,37 +589,37 @@ async function exportAsImage() {
       y: 0 // Start from top
     });
     
-    // Restore legend, close button, and marker labels
+    // Restore legend, close button, and gradient overlay
     if (legendPanel) legendPanel.style.display = '';
     if (closeButton) closeButton.style.display = '';
-    markerLabels.forEach(label => label.style.display = '');
+    if (gradientOverlay) gradientOverlay.style.display = '';
     
-    // Calculate dimensions - side by side layout
+    // Calculate dimensions - square layout: page on right at original size, card extends left
     const pageWidth = pageCanvas.width;
     const pageHeight = pageCanvas.height;
     const maxUsers = currentScrollData.totalUsers || 1;
     
-    // Analytics card on the left, page on the right - card takes 75% of width for better readability
-    const cardWidth = Math.floor(pageWidth * 0.75); // Card takes 75% of width
+    // Make the total canvas square - card fills the remaining space to the left
+    const totalWidth = pageHeight; // Square: width = height
+    const cardWidth = totalWidth - pageWidth; // Card fills remaining space to the left
     const cardHeight = pageHeight;
     const cardX = 0;
     const cardY = 0;
-    const padding = Math.floor(cardWidth * 0.06); // 6% of card width for better spacing
+    const padding = Math.floor(cardWidth * 0.08); // 8% padding for spacious feel
     
-    // Font sizes - will be dynamically adjusted
-    const maxTitleFontSize = Math.floor(cardWidth * 0.06);
-    const maxSubtitleFontSize = Math.floor(cardWidth * 0.04);
-    const maxBarLabelFontSize = Math.floor(cardWidth * 0.04);
-    const maxBarCountFontSize = Math.floor(cardWidth * 0.035);
-    const maxInsightFontSize = Math.floor(cardWidth * 0.035);
-    const lineLabelFontSize = Math.floor(pageHeight * 0.035);
+    // Font sizes - larger for readability without zooming
+    const maxTitleFontSize = Math.floor(cardWidth * 0.08);
+    const maxSubtitleFontSize = Math.floor(cardWidth * 0.055);
+    const maxBarLabelFontSize = Math.floor(cardWidth * 0.055);
+    const maxBarCountFontSize = Math.floor(cardWidth * 0.045);
+    const maxInsightFontSize = Math.floor(cardWidth * 0.045);
+    const lineLabelFontSize = Math.floor(pageHeight * 0.035); // Original size for page markers
     
     // Bar chart dimensions relative to card
     const barHeight = Math.floor(cardHeight * 0.04);
     const barSpacing = Math.floor(cardHeight * 0.07);
     
-    // Total canvas: card on left + page on right
-    const totalWidth = cardWidth + pageWidth;
+    // Total canvas: square
     const canvas = document.createElement('canvas');
     canvas.width = totalWidth;
     canvas.height = pageHeight;
@@ -650,57 +650,76 @@ async function exportAsImage() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     
-    const titleText = '📊 Scroll Depth Analysis';
+    const titleText = 'Scroll Depth Analysis';
     const maxTitleWidth = cardWidth - padding * 2;
     const actualTitleFontSize = getOptimalFontSize(ctx, titleText, maxTitleWidth, maxTitleFontSize, 12);
-    ctx.font = `bold ${actualTitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.font = `bold ${actualTitleFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
     
     // Calculate actual font sizes for bars - make insight much bigger for readability
     const actualBarLabelFontSize = Math.min(maxBarLabelFontSize, actualTitleFontSize * 0.7);
     const actualBarCountFontSize = Math.min(maxBarCountFontSize, actualTitleFontSize * 0.65);
     const actualInsightFontSize = actualTitleFontSize * 0.5; // Much bigger - half the title size
-    
-    // Calculate total content height to center it vertically
-    const titleSectionHeight = actualTitleFontSize + 15;
     const actualSubtitleFontSize = Math.min(maxSubtitleFontSize, actualTitleFontSize * 0.7);
-    const subtitleSectionHeight = actualSubtitleFontSize + 30;
-    const dividerAndGapHeight = 30;
+    
+    // H1 as the main heading - can wrap, minimum 75% of title font size
+    const h1 = document.querySelector('h1');
+    const url = (h1 && h1.textContent.trim()) || window.location.hostname || 'Page';
+    
+    // Build sessions text with date range if available
+    console.log('Scroll Heatmap Export - currentScrollData:', JSON.stringify(currentScrollData));
+    const dateRange = currentScrollData.dateRange || '';
+    const sessionsText = dateRange 
+      ? `Sessions: ${currentScrollData.totalUsers} | ${dateRange}`
+      : `Sessions: ${currentScrollData.totalUsers}`;
+    console.log('Scroll Heatmap Export - dateRange:', dateRange, 'sessionsText:', sessionsText);
+    
+    // H1 font size: at least 75% of the title font size, capped at subtitle size
+    const minUrlFontSize = Math.floor(actualTitleFontSize * 0.75);
+    const actualUrlFontSize = Math.max(minUrlFontSize, actualSubtitleFontSize);
+    
+    // Wrap H1 text at this font size to fit within card width
+    ctx.font = `${actualUrlFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+    const maxUrlLineWidth = cardWidth - padding * 2;
+    const urlLines = wrapText(ctx, url, maxUrlLineWidth);
+    const urlLineHeight = actualUrlFontSize + 6;
+    
+    // Calculate total content height including wrapped H1 (no title section anymore)
+    const h1SectionHeight = (urlLines.length * urlLineHeight) + 4 + actualSubtitleFontSize + 10;
+    const dividerAndGapHeight = 35;
     const barChartHeight = 5 * barSpacing;
     const insightSectionHeight = actualInsightFontSize + 60;
-    const totalContentHeight = titleSectionHeight + subtitleSectionHeight + dividerAndGapHeight + barChartHeight + insightSectionHeight;
+    const totalContentHeight = h1SectionHeight + dividerAndGapHeight + barChartHeight + insightSectionHeight;
     
     // Center the content vertically in the card
     const contentStartY = cardY + (cardHeight - totalContentHeight) / 2;
     
-    // Draw title at centered position
-    ctx.fillText(titleText, cardX + cardWidth / 2, contentStartY + actualTitleFontSize);
+    // Draw H1 lines as the main heading
+    let headerLineY = contentStartY + actualUrlFontSize;
     
-    // URL and sessions on same line - centered
-    const headerLineY = contentStartY + actualTitleFontSize + actualSubtitleFontSize + 15;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.textAlign = 'center';
+    urlLines.forEach(line => {
+      ctx.fillText(line, cardX + cardWidth / 2, headerLineY);
+      headerLineY += urlLineHeight;
+    });
     
-    // Center URL and sessions
-    const url = window.location.hostname || 'Page';
-    const sessionsText = `Sessions: ${currentScrollData.totalUsers}`;
-    ctx.font = `${actualSubtitleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    const urlWidth = ctx.measureText(url).width;
-    const sessionsWidth = ctx.measureText(sessionsText).width;
-    const totalHeaderWidth = urlWidth + 40 + sessionsWidth;
-    const headerStartX = cardX + (cardWidth - totalHeaderWidth) / 2;
-    
-    // URL on left
+    // Sessions + date range on its own line below H1 - dynamically size to fit
+    headerLineY += 4; // small gap
+    const maxSessionsWidth = cardWidth - padding * 2;
+    let actualSessionsFontSize = actualSubtitleFontSize;
+    ctx.font = `${actualSessionsFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+    while (ctx.measureText(sessionsText).width > maxSessionsWidth && actualSessionsFontSize > 8) {
+      actualSessionsFontSize--;
+      ctx.font = `${actualSessionsFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+    }
     ctx.fillStyle = '#666';
-    ctx.textAlign = 'left';
-    ctx.fillText(url, headerStartX, headerLineY);
-    
-    // Sessions on right side
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#333';
-    ctx.fillText(sessionsText, headerStartX + urlWidth + 40, headerLineY);
+    ctx.fillText(sessionsText, cardX + cardWidth / 2, headerLineY);
+    headerLineY += actualSessionsFontSize + 10;
     
     // Divider line
     ctx.strokeStyle = '#e0e0e0';
     ctx.lineWidth = 2;
-    const dividerY = headerLineY + 15;
+    const dividerY = headerLineY + 5;
     ctx.beginPath();
     ctx.moveTo(cardX + padding, dividerY);
     ctx.lineTo(cardX + cardWidth - padding, dividerY);
@@ -729,7 +748,7 @@ async function exportAsImage() {
       
       // Label (centered vertically)
       ctx.fillStyle = '#333';
-      ctx.font = `bold ${actualBarLabelFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = `bold ${actualBarLabelFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${percent}%`, chartStartX + labelWidth - 10, y + barHeight / 2);
@@ -747,7 +766,7 @@ async function exportAsImage() {
       // Count and percentage (centered vertically)
       ctx.textAlign = 'left';
       ctx.fillStyle = '#555';
-      ctx.font = `${actualBarCountFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = `${actualBarCountFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
       const pctOfTotal = Math.round((count / maxUsers) * 100);
       ctx.fillText(`${count} (${pctOfTotal}%)`, chartStartX + labelWidth + actualBarMaxWidth + barGap * 2, y + barHeight / 2);
     });
@@ -763,11 +782,11 @@ async function exportAsImage() {
     const insight = generateInsight(currentScrollData, maxUsers);
     
     // Word wrap the insight text to fit within card
-    ctx.font = `${actualInsightFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.font = `${actualInsightFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
     ctx.fillStyle = '#444';
     
     const maxInsightWidth = cardWidth - padding * 2;
-    const insightLines = wrapText(ctx, '💡 ' + insight, maxInsightWidth);
+    const insightLines = wrapText(ctx, insight, maxInsightWidth);
     let lineY = insightY;
     
     insightLines.forEach(line => {
@@ -775,7 +794,7 @@ async function exportAsImage() {
       lineY += actualInsightFontSize + 8;
     });
     
-    // Draw the page screenshot on the right side
+    // Draw the page screenshot on the right side (at original size)
     const pageStartX = cardWidth;
     ctx.drawImage(pageCanvas, pageStartX, 0);
     
@@ -822,7 +841,7 @@ async function exportAsImage() {
       
       // Draw label on right side - using relative font size
       const labelText = `${percent}% - ${users} users`;
-      ctx.font = `bold ${lineLabelFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = `bold ${lineLabelFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
       const textMetrics = ctx.measureText(labelText);
       const labelWidth = textMetrics.width + labelPadding * 2;
       
@@ -884,9 +903,12 @@ function generateInsight(data, maxUsers) {
     count: depths[String(p)] || 0
   }));
   
-  // Find the biggest drop-off
+  // Find the biggest drop-off - only look at drops BEFORE 75% (false bottom at 75%)
   let biggestDrop = { from: 0, to: 0, dropPercent: 0 };
   for (let i = 1; i < points.length; i++) {
+    // Skip drop-offs at or after 75% (75% is a false bottom)
+    if (points[i-1].percent >= 75) continue;
+    
     const drop = points[i-1].count - points[i].count;
     const dropPercent = points[i-1].count > 0 ? (drop / points[i-1].count) * 100 : 0;
     if (drop > 0 && dropPercent > biggestDrop.dropPercent) {
@@ -899,23 +921,23 @@ function generateInsight(data, maxUsers) {
     }
   }
   
-  // Calculate engagement level
-  const bottomReach = depths['100'] || 0;
-  const bottomPercent = Math.round((bottomReach / maxUsers) * 100);
+  // Calculate engagement level using 75% as the effective bottom (false bottom below 75%)
+  const effectiveBottomReach = depths['75'] || 0;
+  const effectiveBottomPercent = Math.round((effectiveBottomReach / maxUsers) * 100);
   
   // Build insight message
   let insight = '';
   
   if (biggestDrop.dropPercent > 30) {
     insight = `Major drop-off: ${Math.round(biggestDrop.dropPercent)}% of users left between ${biggestDrop.from}% and ${biggestDrop.to}% scroll. Consider moving key content higher.`;
-  } else if (bottomPercent >= 75) {
-    insight = `Strong engagement: ${bottomPercent}% of users reached the bottom. Content is performing well.`;
-  } else if (bottomPercent >= 50) {
-    insight = `Good engagement: ${bottomPercent}% scrolled to the end. Consider testing content layout below 50%.`;
-  } else if (bottomPercent >= 25) {
-    insight = `Moderate engagement: Only ${bottomPercent}% reached the bottom. Key content should be above 50% scroll.`;
+  } else if (effectiveBottomPercent >= 75) {
+    insight = `Strong engagement: ${effectiveBottomPercent}% of users reached 75% scroll. Content is performing well.`;
+  } else if (effectiveBottomPercent >= 50) {
+    insight = `Good engagement: ${effectiveBottomPercent}% reached 75% scroll. Consider testing content layout below 50%.`;
+  } else if (effectiveBottomPercent >= 25) {
+    insight = `Moderate engagement: Only ${effectiveBottomPercent}% reached 75% scroll. Key content should be above 50%.`;
   } else {
-    insight = `Low engagement: Only ${bottomPercent}% scrolled to the bottom. Most users don't scroll past 25%.`;
+    insight = `Low engagement: Only ${effectiveBottomPercent}% reached 75% scroll. Most users don't scroll past 25%.`;
   }
   
   return insight;

@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function parseCSV(file) {
     const reader = new FileReader();
     
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const csvContent = event.target.result;
         const data = parseCSVContent(csvContent);
@@ -70,6 +70,19 @@ document.addEventListener('DOMContentLoaded', () => {
           // Enable toggle
           heatMapToggle.disabled = false;
           hideError();
+          
+          // If heatmap is already visible, update the content script with new data
+          if (heatMapToggle.checked && currentTab) {
+            try {
+              await chrome.tabs.sendMessage(currentTab.id, {
+                action: 'updateHeatMap',
+                visible: true,
+                data: scrollData
+              });
+            } catch (e) {
+              console.log('Could not update content script with new data:', e);
+            }
+          }
         } else {
           showError('No valid scroll data found in CSV. Make sure it contains "scroll_to_XX" events.');
         }
@@ -86,11 +99,66 @@ document.addEventListener('DOMContentLoaded', () => {
     reader.readAsText(file);
   }
   
+  // Parse date string trying multiple formats
+  function parseDate(str) {
+    if (!str) return null;
+    str = str.trim();
+    
+    // Skip obvious non-dates (numbers, event names, etc.)
+    if (/^\d+$/.test(str) && str.length < 6) return null; // plain numbers like "10", "500"
+    if (str.includes('scroll_to')) return null;
+    
+    // Try YYYYMMDD format (common in GA4 exports, e.g., "20250115")
+    let match = str.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (match) {
+      const d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Try ISO format: 2025-01-15
+    match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const d = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Try MM/DD/YYYY or MM-DD-YYYY
+    match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (match) {
+      const d = new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Try Mon DD, YYYY (e.g., "Jan 15, 2025" or "January 15, 2025")
+    match = str.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/);
+    if (match) {
+      const d = new Date(match[1] + ' ' + match[2] + ', ' + match[3]);
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Try DD Mon YYYY (e.g., "15 Jan 2025")
+    match = str.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/);
+    if (match) {
+      const d = new Date(match[2] + ' ' + match[1] + ', ' + match[3]);
+      if (!isNaN(d.getTime())) return d;
+    }
+    
+    // Fallback: let Date constructor try (only for strings that look like they could be dates)
+    if (str.length >= 6 && /[a-zA-Z]/.test(str) || /\d{4}/.test(str)) {
+      const d = new Date(str);
+      if (!isNaN(d.getTime()) && d.getFullYear() > 2000 && d.getFullYear() < 2100) return d;
+    }
+    
+    return null;
+  }
+  
   // Parse CSV content and extract scroll data
   function parseCSVContent(content) {
     const lines = content.split('\n');
     const scrollDepths = {};
     let totalUsers = 0;
+    let dateMin = null;
+    let dateMax = null;
     
     // Find the header line
     let headerLine = -1;
@@ -142,6 +210,18 @@ document.addEventListener('DOMContentLoaded', () => {
       // Check if this row has a date in the first column (not an aggregate row)
       const firstCol = columns[0] ? columns[0].trim() : '';
       const hasDate = firstCol !== '' && firstCol.length > 0;
+      
+      // Track date range - try to find dates in any column
+      for (let c = 0; c < columns.length; c++) {
+        const colVal = columns[c] ? columns[c].trim() : '';
+        if (colVal && colVal.length > 0) {
+          let dateVal = parseDate(colVal);
+          if (dateVal) {
+            if (dateMin === null || dateVal < dateMin) dateMin = dateVal;
+            if (dateMax === null || dateVal > dateMax) dateMax = dateVal;
+          }
+        }
+      }
       
       // Try to find scroll_to_XX pattern
       for (let j = 0; j < columns.length; j++) {
@@ -212,9 +292,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // This represents all users who started scrolling
     totalUsers = scrollDepths["10"] || Math.max(...Object.values(scrollDepths), 0);
     
+    // Format date range
+    let dateRange = '';
+    if (dateMin && dateMax) {
+      const fmtMin = dateMin.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const fmtMax = dateMax.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      dateRange = (fmtMin === fmtMax) ? fmtMin : `${fmtMin} - ${fmtMax}`;
+    }
+    console.log('Scroll Heatmap: Date range detected:', dateRange, '(min:', dateMin, ', max:', dateMax, ')');
+    
     return {
       totalUsers,
-      scrollDepths
+      scrollDepths,
+      dateRange
     };
   }
   
