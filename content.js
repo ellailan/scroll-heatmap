@@ -193,7 +193,7 @@ function showHeatMap(scrollData) {
   const gradientBar = document.createElement('div');
   gradientBar.className = 'scroll-heatmap-gradient-bar';
   // Build full gradient: Red (bad/few users) on left to Green (good/many users) on right
-  gradientBar.style.background = 'linear-gradient(to right, rgba(255, 0, 0, 1), rgba(255, 165, 0, 1), rgba(255, 255, 0, 1), rgba(144, 238, 144, 1), rgba(0, 200, 0, 1))';
+  gradientBar.style.background = 'linear-gradient(to right, rgba(234, 82, 82, 1), rgba(255, 157, 35, 1), rgba(255, 214, 90, 1), rgba(76, 154, 46, 1))';
   
   const gradientLabels = document.createElement('div');
   gradientLabels.className = 'scroll-heatmap-gradient-labels';
@@ -210,7 +210,7 @@ function showHeatMap(scrollData) {
   // Export button
   const exportBtn = document.createElement('button');
   exportBtn.className = 'scroll-heatmap-export-btn';
-  exportBtn.textContent = '📤 Export';
+  exportBtn.textContent = 'Export';
   exportBtn.title = 'Export as image for presentations';
   exportBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -393,6 +393,7 @@ function buildGradient(scrollData) {
 // Get color based on user ratio (0 to 1)
 // High ratio (many users) = Green (good)
 // Low ratio (few users) = Red (bad)
+// Color family: 5B7E3C, FFD65A, FF9D23, EA5252
 function getHeatColor(ratio, alpha = 0.8) {
   // Clamp ratio between 0 and 1
   ratio = Math.max(0, Math.min(1, ratio));
@@ -400,36 +401,36 @@ function getHeatColor(ratio, alpha = 0.8) {
   let r, g, b;
   
   // Color scale:
-  // ratio 1.0 = Green (good - many users)
-  // ratio 0.75 = Light Green
-  // ratio 0.5 = Yellow
-  // ratio 0.25 = Orange
-  // ratio 0.0 = Red (bad - few users)
+  // ratio 1.0 = #4C9A2E (76, 154, 46) - vibrant green, good, many users
+  // ratio 0.75 = #FFD65A (255, 214, 90) - golden yellow
+  // ratio 0.5 = #FF9D23 (255, 157, 35) - orange
+  // ratio 0.25 = between orange and red
+  // ratio 0.0 = #EA5252 (234, 82, 82) - red, bad, few users
   
   if (ratio >= 0.75) {
-    // Light Green to Green (ratio: 0.75 to 1.0)
+    // Golden Yellow to Vibrant Green (ratio: 0.75 to 1.0)
     const t = (ratio - 0.75) / 0.25;
-    r = 0;
-    g = Math.round(200 + 55 * t); // 200 to 255
-    b = 0;
+    r = Math.round(255 + (76 - 255) * t);    // 255 to 76
+    g = Math.round(214 + (154 - 214) * t);    // 214 to 154
+    b = Math.round(90 + (46 - 90) * t);      // 90 to 46
   } else if (ratio >= 0.5) {
-    // Yellow to Light Green (ratio: 0.5 to 0.75)
+    // Orange to Golden Yellow (ratio: 0.5 to 0.75)
     const t = (ratio - 0.5) / 0.25;
-    r = Math.round(255 * (1 - t)); // 255 to 0
-    g = Math.round(200 + 55 * t); // 200 to 255
-    b = 0;
+    r = Math.round(255 + (255 - 255) * t);    // 255 to 255
+    g = Math.round(157 + (214 - 157) * t);    // 157 to 214
+    b = Math.round(35 + (90 - 35) * t);       // 35 to 90
   } else if (ratio >= 0.25) {
-    // Orange to Yellow (ratio: 0.25 to 0.5)
+    // Mid orange-red to Orange (ratio: 0.25 to 0.5)
     const t = (ratio - 0.25) / 0.25;
-    r = 255;
-    g = Math.round(165 + 90 * t); // 165 to 255
-    b = 0;
+    r = Math.round(245 + (255 - 245) * t);    // 245 to 255
+    g = Math.round(120 + (157 - 120) * t);    // 120 to 157
+    b = Math.round(58 + (35 - 58) * t);       // 58 to 35
   } else {
-    // Red to Orange (ratio: 0 to 0.25)
+    // Red to Mid orange-red (ratio: 0 to 0.25)
     const t = ratio / 0.25;
-    r = 255;
-    g = Math.round(165 * t); // 0 to 165
-    b = 0;
+    r = Math.round(234 + (245 - 234) * t);    // 234 to 245
+    g = Math.round(82 + (120 - 82) * t);      // 82 to 120
+    b = Math.round(82 + (58 - 82) * t);       // 82 to 58
   }
   
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
@@ -518,11 +519,11 @@ function wrapText(ctx, text, maxWidth) {
 // Helper function to find optimal font size that fits text in given width
 function getOptimalFontSize(ctx, text, maxWidth, maxFontSize, minFontSize = 10) {
   let fontSize = maxFontSize;
-  ctx.font = `bold ${fontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+  ctx.font = `bold ${fontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
   
   while (ctx.measureText(text).width > maxWidth && fontSize > minFontSize) {
     fontSize--;
-    ctx.font = `bold ${fontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.font = `bold ${fontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
   }
   
   return fontSize;
@@ -625,8 +626,8 @@ async function exportAsImage() {
     canvas.height = pageHeight;
     const ctx = canvas.getContext('2d');
     
-    // Fill background
-    ctx.fillStyle = '#f5f5f5';
+    // Fill background - warm off-white
+    ctx.fillStyle = '#f7f5f2';
     ctx.fillRect(0, 0, totalWidth, pageHeight);
     
     // Draw analytics card at top
@@ -640,7 +641,7 @@ async function exportAsImage() {
     ctx.shadowColor = 'transparent';
     
     // Card border
-    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeStyle = '#e8e4df';
     ctx.lineWidth = 2;
     drawRoundedRect(ctx, cardX, cardY, cardWidth, cardHeight, 16);
     ctx.stroke();
@@ -653,7 +654,7 @@ async function exportAsImage() {
     const titleText = 'Scroll Depth Analysis';
     const maxTitleWidth = cardWidth - padding * 2;
     const actualTitleFontSize = getOptimalFontSize(ctx, titleText, maxTitleWidth, maxTitleFontSize, 12);
-    ctx.font = `bold ${actualTitleFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+ctx.font = `bold ${actualTitleFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
     
     // Calculate actual font sizes for bars - make insight much bigger for readability
     const actualBarLabelFontSize = Math.min(maxBarLabelFontSize, actualTitleFontSize * 0.7);
@@ -678,7 +679,7 @@ async function exportAsImage() {
     const actualUrlFontSize = Math.max(minUrlFontSize, actualSubtitleFontSize);
     
     // Wrap H1 text at this font size to fit within card width
-    ctx.font = `${actualUrlFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+ctx.font = `${actualUrlFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
     const maxUrlLineWidth = cardWidth - padding * 2;
     const urlLines = wrapText(ctx, url, maxUrlLineWidth);
     const urlLineHeight = actualUrlFontSize + 6;
@@ -707,17 +708,17 @@ async function exportAsImage() {
     headerLineY += 4; // small gap
     const maxSessionsWidth = cardWidth - padding * 2;
     let actualSessionsFontSize = actualSubtitleFontSize;
-    ctx.font = `${actualSessionsFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+ctx.font = `${actualSessionsFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
     while (ctx.measureText(sessionsText).width > maxSessionsWidth && actualSessionsFontSize > 8) {
       actualSessionsFontSize--;
-      ctx.font = `${actualSessionsFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+ctx.font = `${actualSessionsFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
     }
-    ctx.fillStyle = '#666';
+    ctx.fillStyle = '#6b7280';
     ctx.fillText(sessionsText, cardX + cardWidth / 2, headerLineY);
     headerLineY += actualSessionsFontSize + 10;
     
     // Divider line
-    ctx.strokeStyle = '#e0e0e0';
+    ctx.strokeStyle = '#e8e4df';
     ctx.lineWidth = 2;
     const dividerY = headerLineY + 5;
     ctx.beginPath();
@@ -747,14 +748,14 @@ async function exportAsImage() {
       const y = barStartY + index * barSpacing;
       
       // Label (centered vertically)
-      ctx.fillStyle = '#333';
-      ctx.font = `bold ${actualBarLabelFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.fillStyle = '#4a5568';
+ctx.font = `bold ${actualBarLabelFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${percent}%`, chartStartX + labelWidth - 10, y + barHeight / 2);
       
       // Bar background
-      ctx.fillStyle = '#f0f0f0';
+      ctx.fillStyle = '#f0eeeb';
       drawRoundedRect(ctx, chartStartX + labelWidth + barGap, y, actualBarMaxWidth, barHeight, 6);
       ctx.fill();
       
@@ -765,8 +766,8 @@ async function exportAsImage() {
       
       // Count and percentage (centered vertically)
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#555';
-      ctx.font = `${actualBarCountFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+      ctx.fillStyle = '#6b7280';
+ctx.font = `${actualBarCountFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
       const pctOfTotal = Math.round((count / maxUsers) * 100);
       ctx.fillText(`${count} (${pctOfTotal}%)`, chartStartX + labelWidth + actualBarMaxWidth + barGap * 2, y + barHeight / 2);
     });
@@ -782,8 +783,8 @@ async function exportAsImage() {
     const insight = generateInsight(currentScrollData, maxUsers);
     
     // Word wrap the insight text to fit within card
-    ctx.font = `${actualInsightFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
-    ctx.fillStyle = '#444';
+ctx.font = `${actualInsightFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
+    ctx.fillStyle = '#5a6577';
     
     const maxInsightWidth = cardWidth - padding * 2;
     const insightLines = wrapText(ctx, insight, maxInsightWidth);
@@ -841,7 +842,7 @@ async function exportAsImage() {
       
       // Draw label on right side - using relative font size
       const labelText = `${percent}% - ${users} users`;
-      ctx.font = `bold ${lineLabelFontSize}px "Samsung One", -apple-system, BlinkMacSystemFont, sans-serif`;
+ctx.font = `bold ${lineLabelFontSize}px "SamsungOne", -apple-system, BlinkMacSystemFont, sans-serif`;
       const textMetrics = ctx.measureText(labelText);
       const labelWidth = textMetrics.width + labelPadding * 2;
       
