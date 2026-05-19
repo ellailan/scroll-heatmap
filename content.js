@@ -477,6 +477,66 @@ function hideHeatMap() {
   currentScrollData = null;
 }
 
+// Convert all images on the page to data URLs so html2canvas can render them
+// Processes in parallel with timeout, skips tiny/tracking images
+async function convertImagesToDataUrls(progressCallback) {
+  const allImages = Array.from(document.querySelectorAll('img'));
+  
+  // Filter out tiny images (tracking pixels, icons) and already-data-URL images
+  const images = allImages.filter(img => {
+    if (!img.src || img.src.startsWith('data:')) return false;
+    // Skip images smaller than 20x20 (likely tracking pixels or tiny icons)
+    if (img.naturalWidth > 0 && img.naturalWidth < 20 && img.naturalHeight < 20) return false;
+    if (img.width > 0 && img.width < 20 && img.height < 20) return false;
+    return true;
+  }).slice(0, 100); // Limit to 100 images max
+  
+  const originalSrcs = [];
+  let completed = 0;
+  
+  // Process a single image with timeout
+  const processImage = async (img) => {
+    const src = img.src;
+    originalSrcs.push({ img, originalSrc: src });
+    
+    try {
+      // 5-second timeout per image
+      const response = await Promise.race([
+        chrome.runtime.sendMessage({ action: 'fetchImage', url: src }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+      ]);
+      if (response && response.success && response.dataUrl) {
+        img.src = response.dataUrl;
+      }
+    } catch (e) {
+      // Skip failed/timed-out images silently
+    }
+    
+    completed++;
+    if (progressCallback) progressCallback(completed, images.length);
+  };
+  
+  // Process in parallel with concurrency limit of 10
+  const concurrency = 10;
+  for (let i = 0; i < images.length; i += concurrency) {
+    const batch = images.slice(i, i + concurrency);
+    await Promise.all(batch.map(processImage));
+  }
+  
+  return originalSrcs;
+}
+
+// Restore original image sources after capture
+function restoreImageSrcs(originalSrcs) {
+  originalSrcs.forEach(({ img, originalSrc }) => {
+    try {
+      img.src = originalSrc;
+    } catch (e) {
+      // Ignore
+    }
+  });
+}
+
 // Helper function to draw rounded rectangle (polyfill for roundRect)
 function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
@@ -556,6 +616,11 @@ async function exportAsImage() {
     if (closeButton) closeButton.style.display = 'none';
     if (gradientOverlay) gradientOverlay.style.display = 'none';
     
+    // Convert all images to data URLs so html2canvas can render them (bypasses CORS)
+    const originalSrcs = await convertImagesToDataUrls((done, total) => {
+      loadingIndicator.textContent = `Loading images ${done}/${total}...`;
+    });
+    
     // Get the actual content dimensions (exclude white space)
     const contentWidth = Math.max(
       document.body.scrollWidth,
@@ -575,7 +640,8 @@ async function exportAsImage() {
       window.innerHeight * 3 // Limit to 3x viewport height to avoid huge captures
     );
     
-    // Use html2canvas to capture the page
+    // Use html2canvas to capture the page (images are now data URLs)
+    loadingIndicator.textContent = 'Capturing page...';
     const pageCanvas = await html2canvas(document.body, {
       logging: false,
       useCORS: true,
@@ -594,6 +660,9 @@ async function exportAsImage() {
     if (legendPanel) legendPanel.style.display = '';
     if (closeButton) closeButton.style.display = '';
     if (gradientOverlay) gradientOverlay.style.display = '';
+    
+    // Restore original image sources
+    restoreImageSrcs(originalSrcs);
     
     // Calculate dimensions - square layout: page on right at original size, card extends left
     const pageWidth = pageCanvas.width;
